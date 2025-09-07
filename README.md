@@ -76,5 +76,6 @@ Output is a single semantic version string, for example:
 
 Planned improvements and open areas for contribution:
 
-- **Configuration flexibility**  
-  Support a configurable mapping of branch patterns (e.g., `develop`, `feature/*`, `release/*`) via a JSON or YAML file, instead of hardcoding strategies.
+- Tests → add unit tests for strategies, parsing, and rendering.
+- Extended config → YAML support
+- Strict mode → optional flag to enforce SemVer compliance when required.
