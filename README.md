@@ -49,6 +49,60 @@ Versioner determines the next version according to the **current branch type**:
 - Final releases (`main/master`) strip both pre-release and metadata.  
 - The highest remote release branch determines the base `X.Y` used for `develop` and `feature` branches.
 
+
+---
+
+
+## Configuration
+
+Versioner can be driven by a JSON config file to map branch patterns → strategies and to decorate the output with prefixes/suffixes.  
+Default path is `versioner.config.json`. You can override with `VERSIONER_CONFIG=/path/to/file.json`.
+
+Example:
+
+    {
+      "rules": [
+        { "pattern": "^main$",                         "strategy": "master",  "prefix": "", "suffix": "" },
+        { "pattern": "^master$",                       "strategy": "master",  "prefix": "", "suffix": "" },
+        { "pattern": "^release\\/(\\d+)\\.(\\d+)\\.0$", "strategy": "release", "prefix": "", "suffix": "+{sha}" },
+        { "pattern": "^develop$",                      "strategy": "develop", "prefix": "", "suffix": "+{sha}" },
+        { "pattern": "^feature\\/.*$",                 "strategy": "feature", "prefix": "", "suffix": "+{sha}" },
+        { "pattern": "^hotfix\\/.*$",                  "strategy": "hotfix",  "prefix": "", "suffix": "+{sha}" }
+      ]
+    }
+
+You control the format: if you prefer `+{sha}` (build metadata) or `-{sha}` (extra pre-release-ish suffix), set it in config.  
+Versioner always produces a canonical core X.Y.Z from strategies; prefix/suffix are pasted around it using placeholders.
+
+Strategies:
+- master (or main) → final releases (X.Y.Z)
+- release → rcN pre-releases on release/X.Y.0 branches
+- develop → next-minor betas
+- feature → next-minor alphas
+- hotfix → patch bump off the latest stable tag
+
+Placeholders:
+- {version} : Canonical base version (e.g., 1.3.0-beta5)
+- {sha} : short commit SHA
+- {N} : Commit distance since latest tag
+- {branch} : Branch name
+- {slug} : Sanitized branch name
+- {major}, {minor}, {patch} : Numeric parts
+- {pre} : Pre-release string (rc3, beta5, etc.)
+- {buildMeta} : Existing build metadata
+- {tag} : Latest known tag string
+
+If a suffix is set, Versioner renders the canonical version without existing build metadata to prevent duplication.
+
+Matching behavior:
+- Rules are tested in file order (first match).
+- Order your rules from specific to general.
+
+Fallback:
+- If no config file, Versioner uses built-in defaults.
+- If config exists but no rule matches, fallback applies as well.
+
+
 ---
 
 ## Usage
