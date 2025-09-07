@@ -1,3 +1,3 @@
-module github.com/alpertosun/jenkins-version/v2
+module github.com/alpertosun/versioner
 
-go 1.16
+go 1.24.5
