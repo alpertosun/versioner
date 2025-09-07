@@ -3,7 +3,8 @@ name: release
 on:
   push:
     tags:
-      - '*' 
+      - '*'
+
 jobs:
   build:
     name: build-${{ matrix.goos }}
@@ -30,7 +31,7 @@ jobs:
 
     env:
       APP_NAME: versioner
-      VERSION: ${{ github.ref_name }}  
+      VERSION: ${{ github.ref_name }}
       CGO_ENABLED: '0'
 
     steps:
@@ -47,16 +48,18 @@ jobs:
       - name: Build
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
-          OUT="dist/${APP_NAME}_${{ matrix.goos }}"
-          if [ "${{ matrix.goos }}" = "windows" ]; then OUT="${OUT}${{ matrix.ext }}"; fi
-          echo "Building ${OUT} ..."
+          OUT="dist/${APP_NAME}_${{ matrix.goos }}${{ matrix.ext }}"
+          SRC="./cmd"
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-          go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o "${OUT}" .
+          go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" \
+            -o "${OUT}" "${SRC}"
 
       - name: Package
         shell: bash
         run: |
+          set -euo pipefail
           cd dist
           BASENAME="${APP_NAME}_${{ matrix.goos }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
@@ -70,15 +73,15 @@ jobs:
       - name: Checksums
         shell: bash
         run: |
+          set -euo pipefail
           cd dist
-          # Aynı job’da tek arşiv var; checksum dosyası üret
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum * > SHA256SUMS.txt
           else
             shasum -a 256 * > SHA256SUMS.txt
           fi
 
-      - name: Upload artifact (job)
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.goos }}
@@ -93,7 +96,9 @@ jobs:
           path: artifacts
 
       - name: Gather files
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p out
           find artifacts -type f -maxdepth 2 -exec cp {} out/ \;
           ls -lah out
