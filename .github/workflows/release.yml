@@ -1,9 +1,15 @@
 name: release
+permissions:
+  contents: write
 
 on:
   push:
     tags:
       - '*'
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -17,17 +23,14 @@ jobs:
             goarch: amd64
             runner: ubuntu-latest
             ext: ""
-            archive: tar.gz
           - goos: windows
             goarch: amd64
             runner: windows-latest
             ext: .exe
-            archive: zip
           - goos: darwin
             goarch: arm64
             runner: macos-latest
             ext: ""
-            archive: tar.gz
 
     env:
       APP_NAME: versioner
@@ -35,13 +38,11 @@ jobs:
       CGO_ENABLED: '0'
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
 
@@ -56,33 +57,53 @@ jobs:
           go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" \
             -o "${OUT}" "${SRC}"
 
-      - name: Package
+      - name: Package (linux/macos)
+        if: matrix.goos != 'windows'
         shell: bash
         run: |
           set -euo pipefail
           cd dist
           BASENAME="${APP_NAME}_${{ matrix.goos }}"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            zip -9 "${BASENAME}.zip" "${BASENAME}${{ matrix.ext }}"
-            rm -f "${BASENAME}${{ matrix.ext }}"
-          else
-            tar -czf "${BASENAME}.tar.gz" "${BASENAME}"
-            rm -f "${BASENAME}"
-          fi
+          tar -czf "${BASENAME}.tar.gz" "${BASENAME}"
+          rm -f "${BASENAME}"
 
-      - name: Checksums
+      - name: Package (windows)
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          cd dist
+          $name = "${env:APP_NAME}_windows"
+          Compress-Archive -Path "$name${{ matrix.ext }}" -DestinationPath "$name.zip" -Force
+          Remove-Item "$name${{ matrix.ext }}"
+
+      - name: Checksums (linux/macos)
+        if: matrix.goos != 'windows'
         shell: bash
         run: |
           set -euo pipefail
           cd dist
+          OUT="SHA256SUMS_${{ matrix.goos }}.txt"
           if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum * > SHA256SUMS.txt
+            sha256sum * > "$OUT"
           else
-            shasum -a 256 * > SHA256SUMS.txt
+            shasum -a 256 * > "$OUT"
           fi
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Checksums (windows)
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          cd dist
+          $out = "SHA256SUMS_windows.txt"
+          Remove-Item $out -ErrorAction SilentlyContinue
+          Get-ChildItem -File | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+            "$h  $($_.Name)" | Out-File -FilePath $out -Append -Encoding ascii
+          }
+
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.goos }}
           path: dist/*
@@ -100,11 +121,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          find artifacts -type f -maxdepth 2 -exec cp {} out/ \;
+          find artifacts -type f -maxdepth 3 -exec cp {} out/ \;
           ls -lah out
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           files: out/*
           name: ${{ github.ref_name }}
