@@ -1,0 +1,110 @@
+name: release
+
+on:
+  push:
+    tags:
+      - '*' 
+jobs:
+  build:
+    name: build-${{ matrix.goos }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+            ext: ""
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            runner: windows-latest
+            ext: .exe
+            archive: zip
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+            ext: ""
+            archive: tar.gz
+
+    env:
+      APP_NAME: versioner
+      VERSION: ${{ github.ref_name }}  
+      CGO_ENABLED: '0'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build
+        shell: bash
+        run: |
+          mkdir -p dist
+          OUT="dist/${APP_NAME}_${{ matrix.goos }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then OUT="${OUT}${{ matrix.ext }}"; fi
+          echo "Building ${OUT} ..."
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+          go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o "${OUT}" .
+
+      - name: Package
+        shell: bash
+        run: |
+          cd dist
+          BASENAME="${APP_NAME}_${{ matrix.goos }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip -9 "${BASENAME}.zip" "${BASENAME}${{ matrix.ext }}"
+            rm -f "${BASENAME}${{ matrix.ext }}"
+          else
+            tar -czf "${BASENAME}.tar.gz" "${BASENAME}"
+            rm -f "${BASENAME}"
+          fi
+
+      - name: Checksums
+        shell: bash
+        run: |
+          cd dist
+          # Aynı job’da tek arşiv var; checksum dosyası üret
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum * > SHA256SUMS.txt
+          else
+            shasum -a 256 * > SHA256SUMS.txt
+          fi
+
+      - name: Upload artifact (job)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.goos }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Gather files
+        run: |
+          mkdir -p out
+          find artifacts -type f -maxdepth 2 -exec cp {} out/ \;
+          ls -lah out
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
