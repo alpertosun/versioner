@@ -1,11 +1,40 @@
 {
-    "rules": [
-      { "pattern": "^main$",                       "strategy": "master",  "prefix": "",     "suffix": "" },
-      { "pattern": "^master$",                     "strategy": "master",  "prefix": "",     "suffix": "" },
-      { "pattern": "^release/(\\d+)\\.(\\d+)\\.0$", "strategy": "release", "prefix": "",     "suffix": "+{sha}" },
-      { "pattern": "^develop$",                    "strategy": "develop", "prefix": "",     "suffix": "-{sha}" },
-      { "pattern": "^feature/.*$",                "strategy": "feature", "prefix": "", "suffix": "+-sha}" },
-      { "pattern": "^hotfix/.*$",                 "strategy": "hotfix",  "prefix": "",     "suffix": "+{sha}" }
-    ]
-  }
-  
+  "rules": [
+    {
+      "pattern": "^main$",
+      "strategy": "master",
+      "prefix": "",
+      "suffix": ""
+    },
+    {
+      "pattern": "^master$",
+      "strategy": "master",
+      "prefix": "",
+      "suffix": ""
+    },
+    {
+      "pattern": "^release/(\\d+)\\.(\\d+)\\.0$",
+      "strategy": "release",
+      "prefix": "",
+      "suffix": "+{sha}"
+    },
+    {
+      "pattern": "^develop$",
+      "strategy": "develop",
+      "prefix": "",
+      "suffix": "+{sha}"
+    },
+    {
+      "pattern": "^feature/.*$",
+      "strategy": "feature",
+      "prefix": "",
+      "suffix": "+{sha}"
+    },
+    {
+      "pattern": "^hotfix/.*$",
+      "strategy": "hotfix",
+      "prefix": "",
+      "suffix": "+{sha}"
+    }
+  ]
+}
