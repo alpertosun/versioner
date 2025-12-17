@@ -88,6 +88,7 @@ func (h HotfixStrategy) NextVersion(base Version, ctx GitContext) (Version, erro
 type MasterStrategy struct{}
 
 func (m MasterStrategy) NextVersion(base Version, ctx GitContext) (Version, error) {
+	base.Patch++
 	base.PreRelease = ""
 	base.BuildMeta = ""
 	return base, nil
