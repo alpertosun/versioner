@@ -58,6 +58,11 @@ Versioner determines the next version according to the **current branch type**:
 Versioner can be driven by a JSON config file to map branch patterns → strategies and to decorate the output with prefixes/suffixes.  
 Default path is `versioner.config.json`. You can override with `VERSIONER_CONFIG=/path/to/file.json`.
 
+### Environment Variables
+
+- `VERSIONER_CONFIG`: Path to the configuration file (default: `versioner.config.json`).
+- `VERSIONER_MERGE`: Set to `true` during a merge pipeline to force `master`/`main` versions to adopt the version of the highest active release branch (e.g. `release/1.2.0` -> `1.2.0`). This is useful for CI/CD pipelines where the merge commit should reflect the release version immediately.
+
 Example:
 
     {

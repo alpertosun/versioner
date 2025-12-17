@@ -39,6 +39,8 @@ func main() {
 		log.Printf("warn: cannot scan release branches: %v", relErr)
 	}
 
+	versionerMerge := os.Getenv("VERSIONER_MERGE") == "true"
+
 	ctx := core.GitContext{
 		Branch:         branch,
 		Target:         "",
@@ -47,6 +49,7 @@ func main() {
 		HasRelease:     hasRel,
 		ReleaseMajor:   relMaj,
 		ReleaseMinor:   relMin,
+		VersionerMerge: versionerMerge,
 	}
 
 	cfgPath := os.Getenv("VERSIONER_CONFIG")

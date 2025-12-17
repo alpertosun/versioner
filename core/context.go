@@ -8,6 +8,7 @@ type GitContext struct {
 	HasRelease     bool
 	ReleaseMajor   int
 	ReleaseMinor   int
+	VersionerMerge bool
 }
 
 func (g GitContext) IsBranch(prefix string) bool {

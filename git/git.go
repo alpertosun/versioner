@@ -78,9 +78,7 @@ func HighestReleaseAB() (a int, b int, found bool, err error) {
 	if out, e := Run("branch", "-r", "--list", "origin/release/*"); e == nil && out != "" {
 		for _, ln := range strings.Split(out, "\n") {
 			ln = strings.TrimSpace(ln)
-			if strings.HasPrefix(ln, "origin/") {
-				ln = strings.TrimPrefix(ln, "origin/")
-			}
+			ln = strings.TrimPrefix(ln, "origin/")
 			if ln != "" {
 				lines = append(lines, ln)
 			}

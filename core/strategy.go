@@ -88,7 +88,18 @@ func (h HotfixStrategy) NextVersion(base Version, ctx GitContext) (Version, erro
 type MasterStrategy struct{}
 
 func (m MasterStrategy) NextVersion(base Version, ctx GitContext) (Version, error) {
-	base.Patch++
+	if ctx.VersionerMerge && ctx.HasRelease {
+		return Version{
+			Major: ctx.ReleaseMajor,
+			Minor: ctx.ReleaseMinor,
+			Patch: 0,
+		}, nil
+	}
+
+	if ctx.CommitDistance > 0 {
+		base.Patch++
+	}
+
 	base.PreRelease = ""
 	base.BuildMeta = ""
 	return base, nil
