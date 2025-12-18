@@ -8,12 +8,12 @@ import (
 
 // RenderVersion builds the final output string by applying rule prefix/suffix
 // with placeholders around the canonical SemVer produced by strategy.
-// To avoid double metadata, if a rule suffix is set, we render canonical version WITHOUT build metadata.
+// To avoid double metadata, if a rule suffix is set (even empty), we render canonical version WITHOUT build metadata.
 // Placeholders still see the original v.BuildMeta value.
 func RenderVersion(v Version, ctx GitContext, rule *CompiledRule, latestTag Version) string {
 	canonical := v.String()
-	if rule != nil && rule.Suffix != "" {
-		// drop metadata from canonical if suffix will likely add it again
+	if rule != nil && rule.Suffix != nil {
+		// drop metadata from canonical if suffix will likely add it again (or effectively remove it)
 		v2 := v
 		v2.BuildMeta = ""
 		canonical = v2.String()
@@ -35,10 +35,17 @@ func RenderVersion(v Version, ctx GitContext, rule *CompiledRule, latestTag Vers
 	}
 
 	// Apply prefix/suffix templates.
-	prefix := applyTemplate(rule.Prefix, values)
-	suffix := applyTemplate(rule.Suffix, values)
+	prefix := applyTemplate(safeStr(rule.Prefix), values)
+	suffix := applyTemplate(safeStr(rule.Suffix), values)
 
 	return prefix + canonical + suffix
+}
+
+func safeStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func applyTemplate(t string, values map[string]string) string {

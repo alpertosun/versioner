@@ -8,10 +8,10 @@ import (
 )
 
 type Rule struct {
-	Pattern  string `json:"pattern"`
-	Strategy string `json:"strategy"`
-	Prefix   string `json:"prefix,omitempty"`
-	Suffix   string `json:"suffix,omitempty"`
+	Pattern  string  `json:"pattern"`
+	Strategy string  `json:"strategy"`
+	Prefix   *string `json:"prefix,omitempty"`
+	Suffix   *string `json:"suffix,omitempty"`
 }
 
 type Config struct {
@@ -23,8 +23,8 @@ type Config struct {
 type CompiledRule struct {
 	Re       *regexp.Regexp
 	Strategy string
-	Prefix   string
-	Suffix   string
+	Prefix   *string
+	Suffix   *string
 }
 
 func LoadConfig(path string) (*Config, error) {
