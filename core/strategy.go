@@ -55,7 +55,7 @@ func (f FeatureStrategy) NextVersion(base Version, ctx GitContext) (Version, err
 type ReleaseStrategy struct{}
 
 func (r ReleaseStrategy) NextVersion(_ Version, ctx GitContext) (Version, error) {
-	re := regexp.MustCompile(`release/(\d+)\.(\d+)\.0`)
+	re := regexp.MustCompile(`^release/(\d+)\.(\d+)\.0$`)
 	matches := re.FindStringSubmatch(ctx.Branch)
 	if len(matches) != 3 {
 		return Version{}, fmt.Errorf("invalid release branch name: %s", ctx.Branch)
