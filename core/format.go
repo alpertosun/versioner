@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+var reUnknownPlaceholder = regexp.MustCompile(`\{[a-zA-Z0-9_-]+\}`)
+
 // RenderVersion builds the final output string by applying rule prefix/suffix
 // with placeholders around the canonical SemVer produced by strategy.
 // To avoid double metadata, if a rule suffix is set (even empty), we render canonical version WITHOUT build metadata.
@@ -53,14 +55,11 @@ func applyTemplate(t string, values map[string]string) string {
 	if t == "" {
 		return ""
 	}
-	// Replace known {key}
 	out := t
 	for k, v := range values {
 		out = strings.ReplaceAll(out, "{"+k+"}", v)
 	}
-	// Remove unknown {something}
-	reUnknown := regexp.MustCompile(`\{[a-zA-Z]+\}`)
-	out = reUnknown.ReplaceAllString(out, "")
+	out = reUnknownPlaceholder.ReplaceAllString(out, "")
 	return out
 }
 
