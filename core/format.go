@@ -11,15 +11,17 @@ import (
 // To avoid double metadata, if a rule suffix is set (even empty), we render canonical version WITHOUT build metadata.
 // Placeholders still see the original v.BuildMeta value.
 func RenderVersion(v Version, ctx GitContext, rule *CompiledRule, latestTag Version) string {
+	if rule == nil {
+		return v.String()
+	}
+
 	canonical := v.String()
-	if rule != nil && rule.Suffix != nil {
-		// drop metadata from canonical if suffix will likely add it again (or effectively remove it)
+	if rule.Suffix != nil {
 		v2 := v
 		v2.BuildMeta = ""
 		canonical = v2.String()
 	}
 
-	// Prepare map for placeholders.
 	values := map[string]string{
 		"sha":       ctx.ShortSHA,
 		"branch":    ctx.Branch,
@@ -34,7 +36,6 @@ func RenderVersion(v Version, ctx GitContext, rule *CompiledRule, latestTag Vers
 		"version":   canonical,
 	}
 
-	// Apply prefix/suffix templates.
 	prefix := applyTemplate(safeStr(rule.Prefix), values)
 	suffix := applyTemplate(safeStr(rule.Suffix), values)
 
