@@ -2,6 +2,7 @@ package git
 
 import (
 	"bytes"
+	"fmt"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -13,11 +14,17 @@ import (
 
 func Run(args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err := cmd.Run()
-	return strings.TrimSpace(out.String()), err
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			return "", err
+		}
+		return "", fmt.Errorf("git %s: %s: %w", args[0], msg, err)
+	}
+	return strings.TrimSpace(stdout.String()), nil
 }
 
 func CurrentBranch() (string, error) { return Run("rev-parse", "--abbrev-ref", "HEAD") }
