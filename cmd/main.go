@@ -10,97 +10,94 @@ import (
 )
 
 func main() {
-	branch, err := git.CurrentBranch()
+	out, err := run()
 	if err != nil {
-		log.Fatalf("cannot get branch: %v", err)
+		log.Fatal(err)
 	}
+	fmt.Println(out)
+}
 
-	shortSHA, err := git.ShortSHA()
-	if err != nil {
-		log.Fatalf("cannot get short sha: %v", err)
-	}
-
-	tagName, latest, _ := git.LatestTagNameAndVersion()
-	var base core.Version
-	if tagName == "" {
-		base = core.Version{Major: 0, Minor: 1, Patch: 0}
-	} else {
-		base = latest
-	}
-
-	commitDistance, err := git.CommitDistanceSinceTagName(tagName)
-	if err != nil {
-		log.Printf("warn: cannot compute commit distance: %v", err)
-		commitDistance = 0
-	}
-
-	relMaj, relMin, hasRel, relErr := git.HighestReleaseAB()
-	if relErr != nil {
-		log.Printf("warn: cannot scan release branches: %v", relErr)
-	}
-
-	versionerMerge := os.Getenv("VERSIONER_MERGE") == "true"
-
-	ctx := core.GitContext{
-		Branch:         branch,
-		Target:         "",
-		ShortSHA:       shortSHA,
-		CommitDistance: commitDistance,
-		HasRelease:     hasRel,
-		ReleaseMajor:   relMaj,
-		ReleaseMinor:   relMin,
-		VersionerMerge: versionerMerge,
-	}
-
+func run() (string, error) {
 	cfgPath := os.Getenv("VERSIONER_CONFIG")
 	if cfgPath == "" {
 		cfgPath = "versioner.config.json"
 	}
-	cfg, cfgErr := core.LoadConfig(cfgPath)
-
-	if cfgErr == nil && cfg != nil && len(cfg.Rules) > 0 {
-		if err := cfg.Validate(); err != nil {
-			log.Fatalf("config validation error: %v", err)
-		}
-		compiled, err := cfg.Compile()
+	cfg, err := core.LoadConfig(cfgPath)
+	if err != nil {
+		return "", err
+	}
+	rules, err := cfg.Compile()
+	if err != nil {
+		return "", err
+	}
+	branch := os.Getenv("VERSIONER_BRANCH")
+	if branch == "" {
+		branch, err = git.CurrentBranch()
 		if err != nil {
-			log.Fatalf("config compile error: %v", err)
-		}
-		if rule, ok := core.MatchRule(compiled, ctx.Branch, cfg.Matching); ok {
-			strategies := map[string]core.Strategy{
-				"master":  core.MasterStrategy{},
-				"main":    core.MasterStrategy{},
-				"release": core.ReleaseStrategy{},
-				"develop": core.DevelopStrategy{},
-				"feature": core.FeatureStrategy{},
-				"hotfix":  core.HotfixStrategy{},
-			}
-			strat, exists := strategies[rule.Strategy]
-			if !exists {
-				log.Fatalf("unknown strategy in config: %s", rule.Strategy)
-			}
-			next, err := strat.NextVersion(base, ctx)
-			if err != nil {
-				log.Fatalf("version generation failed: %v", err)
-			}
-			out := core.RenderVersion(next, ctx, rule, base)
-			fmt.Println(out)
-			return
+			return "", fmt.Errorf("cannot get branch: %w", err)
 		}
 	}
-
-	// v1 fallback
+	if branch == "HEAD" {
+		tag, err := git.TagOnHEAD(rules)
+		if err != nil {
+			return "", err
+		}
+		return tag.Name, nil
+	}
+	rule, rules, err := cfg.ResolveRule(branch)
+	if err != nil {
+		return "", err
+	}
+	tags, err := git.ReadTags(rules)
+	if err != nil {
+		return "", err
+	}
+	reference, err := git.NearestTag(tags, false)
+	if err != nil {
+		return "", err
+	}
+	stable, err := git.NearestTag(tags, true)
+	if err != nil {
+		return "", err
+	}
+	ctx := core.GitContext{Branch: branch, VersionerMerge: os.Getenv("VERSIONER_MERGE") == "true"}
+	if reference != nil {
+		ctx.TagName = reference.Name
+		ctx.CommitDistance = reference.Distance
+	} else {
+		ctx.CommitDistance, err = git.CommitDistanceSinceTagName("")
+		if err != nil {
+			return "", err
+		}
+	}
+	base := core.Version{Major: 0, Minor: 1, Patch: 0}
+	var stableDistance int
+	if stable != nil {
+		base, stableDistance = stable.Version, stable.Distance
+	} else {
+		stableDistance, err = git.CommitDistanceSinceTagName("")
+		if err != nil {
+			return "", err
+		}
+	}
+	ctx.StableCommitDistance = &stableDistance
+	ctx.ShortSHA, err = git.ShortSHA()
+	if err != nil {
+		return "", err
+	}
+	ctx.ReleaseMajor, ctx.ReleaseMinor, ctx.HasRelease, err = git.HighestReleaseAB()
+	if err != nil {
+		return "", err
+	}
+	strategy, err := core.StrategyByName(rule.Strategy)
+	if err != nil {
+		return "", err
+	}
 	engine := core.NewEngine()
-	engine.Register("feature/", core.FeatureStrategy{})
-	engine.Register("develop", core.DevelopStrategy{})
-	engine.Register("release/", core.ReleaseStrategy{})
-	engine.Register("hotfix/", core.HotfixStrategy{})
-	engine.Register("master", core.MasterStrategy{})
-	engine.Register("main", core.MasterStrategy{})
-
+	engine.Register(ctx.Branch, strategy)
 	next, err := engine.Resolve(ctx, base)
 	if err != nil {
-		log.Fatalf("version generation failed: %v", err)
+		return "", err
 	}
-	fmt.Println(next.String())
+	return core.RenderVersion(next, ctx, rule, base), nil
 }

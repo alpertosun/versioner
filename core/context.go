@@ -9,6 +9,9 @@ type GitContext struct {
 	ReleaseMajor   int
 	ReleaseMinor   int
 	VersionerMerge bool
+	TagName        string
+	// Nil preserves CommitDistance for callers that do not resolve a stable tag.
+	StableCommitDistance *int
 }
 
 func (g GitContext) IsBranch(prefix string) bool {

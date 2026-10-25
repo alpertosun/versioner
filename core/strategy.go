@@ -10,97 +10,149 @@ type Strategy interface {
 	NextVersion(base Version, ctx GitContext) (Version, error)
 }
 
+type formattedStrategy interface {
+	Strategy
+	format() versionFormat
+}
+
+func lookupStrategy(name string) (formattedStrategy, error) {
+	switch name {
+	case "master", "main":
+		return MasterStrategy{}, nil
+	case "release":
+		return ReleaseStrategy{}, nil
+	case "develop":
+		return DevelopStrategy{}, nil
+	case "feature":
+		return FeatureStrategy{}, nil
+	case "hotfix":
+		return HotfixStrategy{}, nil
+	default:
+		return nil, fmt.Errorf("unknown strategy: %s", name)
+	}
+}
+
+func StrategyByName(name string) (Strategy, error) {
+	return lookupStrategy(name)
+}
+
 type DevelopStrategy struct{}
+
+func (d DevelopStrategy) format() versionFormat {
+	return versionFormat{prereleasePrefix: "beta", metadataEnabled: true, zeroPatch: true}
+}
 
 func (d DevelopStrategy) NextVersion(base Version, ctx GitContext) (Version, error) {
 	var major, minor int
 	if ctx.HasRelease {
 		major = ctx.ReleaseMajor
-		minor = ctx.ReleaseMinor + 1
+		minor = ctx.ReleaseMinor
 	} else {
 		major = base.Major
-		minor = base.Minor + 1
+		minor = base.Minor
 	}
-	v := Version{
-		Major:     major,
-		Minor:     minor,
-		Patch:     0,
-		BuildMeta: ctx.ShortSHA,
+	minor, err := increment(minor)
+	if err != nil {
+		return Version{}, err
 	}
-	v.PreRelease = fmt.Sprintf("beta%d", ctx.CommitDistance)
-	return v, nil
+	return d.format().apply(Version{Major: major, Minor: minor}, ctx), nil
 }
 
 type FeatureStrategy struct{}
+
+func (f FeatureStrategy) format() versionFormat {
+	return versionFormat{prereleasePrefix: "alpha", metadataEnabled: true, zeroPatch: true}
+}
 
 func (f FeatureStrategy) NextVersion(base Version, ctx GitContext) (Version, error) {
 	var major, minor int
 	if ctx.HasRelease {
 		major = ctx.ReleaseMajor
-		minor = ctx.ReleaseMinor + 1
+		minor = ctx.ReleaseMinor
 	} else {
 		major = base.Major
-		minor = base.Minor + 1
+		minor = base.Minor
 	}
-	v := Version{
-		Major:     major,
-		Minor:     minor,
-		Patch:     0,
-		BuildMeta: ctx.ShortSHA,
+	minor, err := increment(minor)
+	if err != nil {
+		return Version{}, err
 	}
-	v.PreRelease = fmt.Sprintf("alpha%d", ctx.CommitDistance)
-	return v, nil
+	return f.format().apply(Version{Major: major, Minor: minor}, ctx), nil
 }
 
 type ReleaseStrategy struct{}
 
+func (r ReleaseStrategy) format() versionFormat {
+	return versionFormat{prereleasePrefix: "rc", metadataEnabled: true, metadataPrefix: "g", zeroPatch: true}
+}
+
 func (r ReleaseStrategy) NextVersion(_ Version, ctx GitContext) (Version, error) {
+	major, minor, err := parseReleaseBranch(ctx.Branch)
+	if err != nil {
+		return Version{}, err
+	}
+	return r.format().apply(Version{Major: major, Minor: minor}, ctx), nil
+}
+
+func parseReleaseBranch(branch string) (major, minor int, err error) {
 	re := regexp.MustCompile(`^release/(\d+)\.(\d+)\.0$`)
-	matches := re.FindStringSubmatch(ctx.Branch)
+	matches := re.FindStringSubmatch(branch)
 	if len(matches) != 3 {
-		return Version{}, fmt.Errorf("invalid release branch name: %s", ctx.Branch)
+		return 0, 0, fmt.Errorf("invalid release branch name: %s", branch)
 	}
 
-	major, _ := strconv.Atoi(matches[1])
-	minor, _ := strconv.Atoi(matches[2])
-
-	v := Version{
-		Major:     major,
-		Minor:     minor,
-		Patch:     0,
-		BuildMeta: "g" + ctx.ShortSHA,
+	major, err = strconv.Atoi(matches[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid release major: %w", err)
 	}
-	if ctx.CommitDistance > 0 {
-		v.PreRelease = fmt.Sprintf("rc%d", ctx.CommitDistance)
+	minor, err = strconv.Atoi(matches[2])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid release minor: %w", err)
 	}
-	return v, nil
+	return major, minor, nil
 }
 
 type HotfixStrategy struct{}
 
+func (h HotfixStrategy) format() versionFormat {
+	return versionFormat{metadataEnabled: true, metadataPrefix: "g"}
+}
+
 func (h HotfixStrategy) NextVersion(base Version, ctx GitContext) (Version, error) {
-	base.Patch++
-	base.PreRelease = ""
-	base.BuildMeta = "g" + ctx.ShortSHA
-	return base, nil
+	patch, err := increment(base.Patch)
+	if err != nil {
+		return Version{}, err
+	}
+	base.Patch = patch
+	return h.format().apply(base, ctx), nil
 }
 
 type MasterStrategy struct{}
 
+func (m MasterStrategy) format() versionFormat {
+	return versionFormat{}
+}
+
 func (m MasterStrategy) NextVersion(base Version, ctx GitContext) (Version, error) {
 	if ctx.VersionerMerge && ctx.HasRelease {
-		return Version{
+		return m.format().apply(Version{
 			Major: ctx.ReleaseMajor,
 			Minor: ctx.ReleaseMinor,
 			Patch: 0,
-		}, nil
+		}, ctx), nil
 	}
 
-	if ctx.CommitDistance > 0 {
-		base.Patch++
+	distance := ctx.CommitDistance
+	if ctx.StableCommitDistance != nil {
+		distance = *ctx.StableCommitDistance
+	}
+	if distance > 0 {
+		patch, err := increment(base.Patch)
+		if err != nil {
+			return Version{}, err
+		}
+		base.Patch = patch
 	}
 
-	base.PreRelease = ""
-	base.BuildMeta = ""
-	return base, nil
+	return m.format().apply(base, ctx), nil
 }
