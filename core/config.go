@@ -25,13 +25,30 @@ type CompiledRule struct {
 	Strategy string
 	Prefix   *string
 	Suffix   *string
+	format   *ruleFormat
+}
+
+func DefaultConfig() *Config {
+	patterns := []string{
+		`^main$`, `^master$`, `^release\/(\d+)\.(\d+)\.0$`,
+		`^develop$`, `^feature\/.*$`, `^hotfix\/.*$`,
+	}
+	strategies := []string{"master", "master", "release", "develop", "feature", "hotfix"}
+	cfg := &Config{Matching: "first"}
+	for i, pattern := range patterns {
+		prefix, suffix := "", ""
+		cfg.Rules = append(cfg.Rules, Rule{
+			Pattern: pattern, Strategy: strategies[i], Prefix: &prefix, Suffix: &suffix,
+		})
+	}
+	return cfg
 }
 
 func LoadConfig(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return DefaultConfig(), nil
 		}
 		return nil, fmt.Errorf("read config: %w", err)
 	}
@@ -46,15 +63,11 @@ func (c *Config) Validate() error {
 	if c == nil {
 		return fmt.Errorf("nil config")
 	}
-	allowed := map[string]bool{
-		"master": true, "main": true, "release": true,
-		"develop": true, "feature": true, "hotfix": true,
-	}
 	for i, r := range c.Rules {
 		if r.Pattern == "" {
 			return fmt.Errorf("rule[%d]: empty pattern", i)
 		}
-		if !allowed[r.Strategy] {
+		if _, err := lookupStrategy(r.Strategy); err != nil {
 			return fmt.Errorf("rule[%d]: unknown strategy %q", i, r.Strategy)
 		}
 	}
@@ -68,20 +81,49 @@ func (c *Config) Validate() error {
 }
 
 func (c *Config) Compile() ([]CompiledRule, error) {
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	if len(c.Rules) == 0 {
+		return DefaultConfig().Compile()
+	}
 	crs := make([]CompiledRule, 0, len(c.Rules))
 	for i, r := range c.Rules {
 		re, err := regexp.Compile(r.Pattern)
 		if err != nil {
 			return nil, fmt.Errorf("compile rule[%d] pattern:%q: %w", i, r.Pattern, err)
 		}
-		crs = append(crs, CompiledRule{
+		cr := CompiledRule{
 			Re:       re,
 			Strategy: r.Strategy,
 			Prefix:   r.Prefix,
 			Suffix:   r.Suffix,
-		})
+		}
+		strategy, _ := lookupStrategy(r.Strategy)
+		cr.format = compileRuleFormat(cr, strategy.format())
+		crs = append(crs, cr)
 	}
 	return crs, nil
+}
+
+// ResolveRule includes the selected fallback in the rules used to read tags.
+func (c *Config) ResolveRule(branch string) (*CompiledRule, []CompiledRule, error) {
+	rules, err := c.Compile()
+	if err != nil {
+		return nil, nil, err
+	}
+	if rule, ok := MatchRule(rules, branch, c.Matching); ok {
+		return rule, rules, nil
+	}
+	defaults, err := DefaultConfig().Compile()
+	if err != nil {
+		return nil, nil, err
+	}
+	if rule, ok := MatchRule(defaults, branch, "first"); ok {
+		rules = append(rules, *rule)
+		return &rules[len(rules)-1], rules, nil
+	}
+	return nil, nil, fmt.Errorf("no strategy found for branch: %s", branch)
 }
 
 // MatchRule supports matching modes:

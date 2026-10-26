@@ -1,6 +1,6 @@
 name: release
 permissions:
-  contents: write
+  contents: read
 
 on:
   push:
@@ -12,7 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify:
+    uses: ./.github/workflows/checks.yml
+
   build:
+    needs: verify
     name: build-${{ matrix.goos }}
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -36,15 +40,18 @@ jobs:
       APP_NAME: versioner
       VERSION: ${{ github.ref_name }}
       CGO_ENABLED: '0'
+      GOTOOLCHAIN: local
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
+          cache: false
 
       - name: Build
         shell: bash
@@ -85,9 +92,9 @@ jobs:
           cd dist
           OUT="SHA256SUMS_${{ matrix.goos }}.txt"
           if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum * > "$OUT"
+            sha256sum *.tar.gz > "$OUT"
           else
-            shasum -a 256 * > "$OUT"
+            shasum -a 256 *.tar.gz > "$OUT"
           fi
 
       - name: Checksums (windows)
@@ -98,12 +105,12 @@ jobs:
           cd dist
           $out = "SHA256SUMS_windows.txt"
           Remove-Item $out -ErrorAction SilentlyContinue
-          Get-ChildItem -File | ForEach-Object {
+          Get-ChildItem -File -Filter '*.zip' | ForEach-Object {
             $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
             "$h  $($_.Name)" | Out-File -FilePath $out -Append -Encoding ascii
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.goos }}
           path: dist/*
@@ -111,8 +118,10 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
 
@@ -121,10 +130,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          find artifacts -type f -maxdepth 3 -exec cp {} out/ \;
+          find artifacts -maxdepth 3 -type f -exec cp {} out/ \;
           ls -lah out
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: out/*
           name: ${{ github.ref_name }}

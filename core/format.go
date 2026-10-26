@@ -2,7 +2,6 @@ package core
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -12,36 +11,32 @@ var reUnknownPlaceholder = regexp.MustCompile(`\{[a-zA-Z0-9_-]+\}`)
 // with placeholders around the canonical SemVer produced by strategy.
 // To avoid double metadata, if a rule suffix is set (even empty), we render canonical version WITHOUT build metadata.
 // Placeholders still see the original v.BuildMeta value.
-func RenderVersion(v Version, ctx GitContext, rule *CompiledRule, latestTag Version) string {
+func RenderVersion(v Version, ctx GitContext, rule *CompiledRule, _ Version) string {
 	if rule == nil {
 		return v.String()
 	}
 
-	canonical := v.String()
-	if rule.Suffix != nil {
-		v2 := v
-		v2.BuildMeta = ""
-		canonical = v2.String()
+	f := rule.format
+	if f == nil {
+		var format versionFormat
+		if strategy, err := lookupStrategy(rule.Strategy); err == nil {
+			format = strategy.format()
+		}
+		f = compileRuleFormat(*rule, format)
 	}
+	return f.render(v, ctx)
+}
 
-	values := map[string]string{
-		"sha":       ctx.ShortSHA,
-		"branch":    ctx.Branch,
-		"slug":      sanitizeSlug(ctx.Branch),
-		"N":         strconv.Itoa(ctx.CommitDistance),
-		"major":     strconv.Itoa(v.Major),
-		"minor":     strconv.Itoa(v.Minor),
-		"patch":     strconv.Itoa(v.Patch),
-		"tag":       latestTag.String(),
-		"pre":       v.PreRelease,
-		"buildMeta": v.BuildMeta,
-		"version":   canonical,
+func (f *ruleFormat) render(v Version, ctx GitContext) string {
+	var out strings.Builder
+	for _, part := range f.parts {
+		if part.field == "" {
+			out.WriteString(part.literal)
+		} else {
+			out.WriteString(f.fields[part.field].definition.value(v, ctx, f))
+		}
 	}
-
-	prefix := applyTemplate(safeStr(rule.Prefix), values)
-	suffix := applyTemplate(safeStr(rule.Suffix), values)
-
-	return prefix + canonical + suffix
+	return out.String()
 }
 
 func safeStr(s *string) string {
@@ -49,18 +44,6 @@ func safeStr(s *string) string {
 		return ""
 	}
 	return *s
-}
-
-func applyTemplate(t string, values map[string]string) string {
-	if t == "" {
-		return ""
-	}
-	out := t
-	for k, v := range values {
-		out = strings.ReplaceAll(out, "{"+k+"}", v)
-	}
-	out = reUnknownPlaceholder.ReplaceAllString(out, "")
-	return out
 }
 
 func sanitizeSlug(s string) string {
@@ -75,8 +58,8 @@ func sanitizeSlug(s string) string {
 	// trim '-'
 	s = strings.Trim(s, "-")
 	// limit length
-	if len(s) > 16 {
-		s = s[:16]
+	if len(s) > maxSlugLength {
+		s = s[:maxSlugLength]
 	}
 	return s
 }

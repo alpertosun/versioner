@@ -13,28 +13,28 @@
       "suffix": ""
     },
     {
-      "pattern": "^release/(\\d+)\\.(\\d+)\\.0$",
+      "pattern": "^release\\/(\\d+)\\.(\\d+)\\.0$",
       "strategy": "release",
       "prefix": "",
-      "suffix": "+{sha}"
+      "suffix": ""
     },
     {
       "pattern": "^develop$",
       "strategy": "develop",
       "prefix": "",
-      "suffix": "+{sha}"
+      "suffix": ""
     },
     {
-      "pattern": "^feature/.*$",
+      "pattern": "^feature\\/.*$",
       "strategy": "feature",
       "prefix": "",
-      "suffix": "+{sha}"
+      "suffix": ""
     },
     {
-      "pattern": "^hotfix/.*$",
+      "pattern": "^hotfix\\/.*$",
       "strategy": "hotfix",
       "prefix": "",
-      "suffix": "+{sha}"
+      "suffix": ""
     }
   ]
 }

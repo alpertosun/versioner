@@ -7,9 +7,11 @@ import (
 	"strings"
 )
 
+const numberPattern = `(?:0|[1-9]\d*)`
+
 var (
 	semverRe = regexp.MustCompile(`^(?:v)?` + // optional v
-		`(?P<maj>0|[1-9]\d*)\.(?P<min>0|[1-9]\d*)\.(?P<pat>0|[1-9]\d*)` +
+		`(?P<maj>` + numberPattern + `)\.(?P<min>` + numberPattern + `)\.(?P<pat>` + numberPattern + `)` +
 		`(?:-(?P<pre>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?` +
 		`(?:\+(?P<build>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
 )
@@ -39,9 +41,18 @@ func ParseVersion(tag string) (Version, error) {
 		return Version{}, fmt.Errorf("invalid version: %s", tag)
 	}
 	idx := func(name string) int { return semverRe.SubexpIndex(name) }
-	maj, _ := strconv.Atoi(m[idx("maj")])
-	min, _ := strconv.Atoi(m[idx("min")])
-	pat, _ := strconv.Atoi(m[idx("pat")])
+	maj, err := strconv.Atoi(m[idx("maj")])
+	if err != nil {
+		return Version{}, fmt.Errorf("invalid major version: %w", err)
+	}
+	min, err := strconv.Atoi(m[idx("min")])
+	if err != nil {
+		return Version{}, fmt.Errorf("invalid minor version: %w", err)
+	}
+	pat, err := strconv.Atoi(m[idx("pat")])
+	if err != nil {
+		return Version{}, fmt.Errorf("invalid patch version: %w", err)
+	}
 	pre := m[idx("pre")]
 	build := m[idx("build")]
 	return Version{Major: maj, Minor: min, Patch: pat, PreRelease: pre, BuildMeta: build}, nil
@@ -52,13 +63,13 @@ func ParseVersion(tag string) (Version, error) {
 func (v Version) Compare(o Version) int {
 	// core
 	if v.Major != o.Major {
-		return v.Major - o.Major
+		return compareInt(v.Major, o.Major)
 	}
 	if v.Minor != o.Minor {
-		return v.Minor - o.Minor
+		return compareInt(v.Minor, o.Minor)
 	}
 	if v.Patch != o.Patch {
-		return v.Patch - o.Patch
+		return compareInt(v.Patch, o.Patch)
 	}
 	if v.PreRelease == "" && o.PreRelease == "" {
 		return 0
@@ -85,13 +96,14 @@ func (v Version) Compare(o Version) int {
 }
 
 func comparePreID(a, b string) int {
-	ai, aNum := toInt(a)
-	bi, bNum := toInt(b)
+	aNum := isNumeric(a)
+	bNum := isNumeric(b)
 	if aNum && bNum {
-		if ai != bi {
-			return ai - bi
+		a, b = strings.TrimLeft(a, "0"), strings.TrimLeft(b, "0")
+		if len(a) != len(b) {
+			return compareInt(len(a), len(b))
 		}
-		return 0
+		return strings.Compare(a, b)
 	}
 	if aNum && !bNum {
 		return -1 // numerics < non-numerics
@@ -102,15 +114,31 @@ func comparePreID(a, b string) int {
 	return strings.Compare(a, b)
 }
 
-func toInt(s string) (int, bool) {
+func isNumeric(s string) bool {
 	if s == "" {
-		return 0, false
+		return false
 	}
 	for i := 0; i < len(s); i++ {
 		if s[i] < '0' || s[i] > '9' {
-			return 0, false
+			return false
 		}
 	}
-	v, _ := strconv.Atoi(s)
-	return v, true
+	return true
+}
+
+func compareInt(a, b int) int {
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
+}
+
+func increment(n int) (int, error) {
+	if n < 0 || n == int(^uint(0)>>1) {
+		return 0, fmt.Errorf("version component cannot be incremented: %d", n)
+	}
+	return n + 1, nil
 }
